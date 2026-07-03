@@ -1,13 +1,14 @@
-"""Enumerate successive vertex orderings of a finite simple graph.
+"""
+Title: Enumerate successive vertex orderings of a finite simple graph.
 
-This module implements the inclusion--exclusion method described in the paper "Successive vertex orderings of graphs".
-
-Mathematical input:
-    - a finite simple graph G given by a 0/1 adjacency matrix A
+1. This script implements the inclusion--exclusion method described in the paper "Successive vertex orderings of graphs".
+2. Calculate successive ordering polynomial of the graph.
+3. Calculate Ak values by taking derivative of the polynomial.
+4. Illustrate these calculations on example graphs.
+5. Apply to jigsaw puzzles.
 
 Core identity used by the implementation:
     sigma(G) / n! = sum_{I independent} (-1)^{|I|} * a(I)/n * b(I)
-
 where
     a(I) = n - |N[I]|,
     b(∅) = 1,
@@ -18,11 +19,13 @@ Date: 09 Feb 2026
 Version: 1.0
 """
 
+#========================================== Main script ==========================================#
 # Import packages
 from __future__ import annotations
 from typing import Union, Iterable
 from fractions import Fraction
 import math
+import numpy as np
 
 class Subset:
     vector: list[int]
@@ -198,7 +201,6 @@ class Node:
             self.b += parent.b / Fraction(self.n - self.a)
         return self.b
     
-
 class Lattice:
     n: int # polyomino size
     polyomino: Polyomino
@@ -246,7 +248,7 @@ class Lattice:
                 coefficients[node.d] += node.b
         return coefficients   
         
-#------------------------------------------------------------------------#
+#--------------------------------- SVO calculation -------------------------------------#
 def successive_vertex_orderings(adj_matrix):
     """
     Given a graph (adjacency matrix), count the number of distinct growth sequences (successive vertex orderings).
@@ -257,3 +259,58 @@ def successive_vertex_orderings(adj_matrix):
     fraction = lattice.sum_all_values()
 
     return int(fraction*math.factorial(polyomino.n))
+
+#--------------------- Create adjacency matrix of an mxn puzzle ---------------------------#
+def rectangular_grid_adj_matrix(m, n):
+    """
+    Returns adjacency matrix for an m x n grid (m rows, n columns) with 4-neighbour connectivity.
+    """
+    A = np.zeros((m * n, m * n), dtype=int)
+    
+    for i in range(m):
+        for j in range(n):
+            idx = i * n + j
+            
+            if i > 0: A[idx, (i - 1) * n + j] = 1 # Up
+            if i < m - 1: A[idx, (i + 1) * n + j] = 1 # Down
+            if j > 0: A[idx, i * n + (j - 1)] = 1 # Left
+            if j < n - 1: A[idx, i * n + (j + 1)] = 1 # Right
+                
+    return A
+
+#---------------------- Return derivative of the polynomial at x=-1 -------------------------# 
+def kth_derivative_at_minus_one(coeffs, k):
+    total = 0
+    for n in range(k, len(coeffs)):
+        falling = math.factorial(n) // math.factorial(n - k)
+        total += coeffs[n] * falling * ((-1) ** (n - k))
+    return total
+
+
+#===========================================================================================#
+#----------------------------------------- EXAMPLES ----------------------------------------#
+#===========================================================================================#
+
+
+
+#======================================= Jigsaw puzzle =====================================#
+size = 3*2 # 3x2 puzzle
+graph = rectangular_grid_adj_matrix(rows,cols).tolist() # convert to adjacency matrix
+
+# Return successive vertex orderings
+svo = Lattice(Polyomino(graph)).sum_all_values()
+print('SVO =', svo*math.factorial(size))
+
+# Return successive vertex ordering polynomial
+polynomial_coeffs = Lattice(Polyomino(graph)).get_polynomial_coefficients(a_included = True)
+print(polynomial_coeffs)
+
+# Get Ak coefficients by taking derivative of svo polynomial
+A_k_list = []
+for k in range(size + 1):
+    F_prime_k_at_minus_one = kth_derivative_at_minus_one(polynomial_coeffs, k)
+    n_fact = math.factorial(size)
+    k_fact = math.factorial(k)
+    A_k = (n_fact * F_prime_k_at_minus_one)/ k_fact
+    A_k_list.append(int(A_k))
+print(A_k_list)
