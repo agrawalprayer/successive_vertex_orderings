@@ -331,7 +331,8 @@ print(successive_vertex_orderings(adj_matrix))
 #-----------------------------------------------------------------------------#
 
 #======================================= Jigsaw puzzle =====================================#
-size = 3*2 # 3x2 puzzle
+rows = 3; cols = 2
+size = rows*cols # 3x2 puzzle
 graph = rectangular_grid_adj_matrix(rows,cols).tolist() # convert to adjacency matrix
 
 # Return successive vertex orderings
