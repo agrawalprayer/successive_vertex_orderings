@@ -1,77 +1,284 @@
 # Successive Vertex Ordering Enumerator
 
-This repository contains a Python implementation of the inclusion-exclusion method used to count successive vertex orderings of a finite connected simple graph.
+This repository contains a Python implementation of the inclusion-exclusion algorithm described in the paper **"Successive Vertex Orderings of Graphs"**.
 
-The code follows the construction from the paper **"Successive vertex orderings of graphs"**.
+The program computes the exact number of successive vertex orderings of a graph by enumerating all independent sets and evaluating the recursive quantities appearing in the inclusion-exclusion formula.
 
-## What the program computes
+In addition, the implementation can
 
-For a finite connected simple graph `G` on `n` vertices, the number of successive vertex orderings is computed from
+- compute the successive vertex ordering polynomial,
+- compute the derivatives of the polynomial,
+- calculate the corresponding \(A_k\) coefficients, and
+- generate rectangular grid graphs for jigsaw puzzle applications.
 
-`sigma(G) / n! = sum over independent sets I of (-1)^{|I|} * a(I)/n * b(I)`
+---
 
-where:
+## Mathematical Background
 
-- `a(I) = n - |N[I]|`
-- `b(∅) = 1`
-- `b(I) = (1 / |N[I]|) * sum_{v in I} b(I \ {v})` for nonempty independent sets
+For a graph \(G=(V,E)\) with \(n=|V|\),
 
-The implementation builds the independent sets in lexicographic order, computes `b(I)` recursively, then sums the signed contributions.
+```
+σ(G)/n! = Σ (-1)^|I| · (a(I)/n) · b(I)
+```
 
-## Files
+where the summation is over all independent sets \(I\),
 
-- `svo_enumerator.py` — the main implementation
+```
+a(I) = n - |N[I]|
+```
 
-## Usage
+and
+
+```
+b(∅) = 1
+```
+
+```
+b(I) = (1/|N[I]|) Σ b(I \ {v})
+```
+
+where the second summation is over all vertices \(v\in I\).
+
+The implementation evaluates this identity exactly using rational arithmetic (`fractions.Fraction`).
+
+---
+
+## Features
+
+The program provides:
+
+- exact computation of successive vertex orderings;
+- enumeration of all independent sets;
+- construction of the independent-set lattice;
+- computation of the recursive values \(b(I)\);
+- computation of the successive vertex ordering polynomial;
+- computation of polynomial derivatives evaluated at \(x=-1\);
+- computation of the \(A_k\) coefficients;
+- generation of rectangular grid graphs.
+
+---
+
+## Repository Structure
+
+```
+.
+├── svo_enumerator.py
+└── README.md
+```
+
+---
+
+## Main Classes
+
+### `Subset`
+
+Represents a subset of vertices using a binary indicator vector.
+
+Provides methods for
+
+- adding and removing vertices,
+- computing unions and intersections,
+- generating parent and child subsets,
+- lexicographic subset generation.
+
+---
+
+### `Polyomino`
+
+Represents a graph using its adjacency matrix.
+
+Provides methods for
+
+- neighbourhood computation,
+- independent set testing,
+- graph operations used by the inclusion-exclusion algorithm.
+
+Although the class is named `Polyomino`, it accepts any graph represented by an adjacency matrix.
+
+---
+
+### `Node`
+
+Represents one independent set in the lattice.
+
+Each node stores
+
+- the independent set,
+- its neighbourhood,
+- the quantity
+
+```
+a(I)=n-|N[I]|
+```
+
+- the recursively computed value
+
+```
+b(I)
+```
+
+- the corresponding contribution to the inclusion-exclusion sum.
+
+---
+
+### `Lattice`
+
+Constructs the lattice of independent sets.
+
+It computes
+
+- all independent sets,
+- parent-child relationships,
+- recursive \(b(I)\) values,
+- the inclusion-exclusion sum,
+- successive vertex ordering polynomial coefficients.
+
+---
+
+## Functions
+
+### `successive_vertex_orderings(adj_matrix)`
+
+Returns the exact number of successive vertex orderings of the graph.
+
+Example
 
 ```python
 from svo_enumerator import successive_vertex_orderings
 
 A = [
-    [0, 1, 0, 0, 1],
-    [1, 0, 1, 1, 0],
-    [0, 1, 0, 1, 0],
-    [0, 1, 1, 0, 1],
-    [1, 0, 0, 1, 0],
+    [0,1,0,0,1],
+    [1,0,1,1,0],
+    [0,1,0,1,0],
+    [0,1,1,0,1],
+    [1,0,0,1,0]
 ]
 
 print(successive_vertex_orderings(A))
 ```
 
-For the worked example in the paper, this returns `60`.
+Output
+
+```
+60
+```
+
+---
+
+### `rectangular_grid_adj_matrix(m, n)`
+
+Constructs the adjacency matrix of an \(m\times n\) rectangular grid using 4-neighbour connectivity.
+
+Example
+
+```python
+graph = rectangular_grid_adj_matrix(3,2)
+```
+
+---
+
+### `kth_derivative_at_minus_one(coeffs, k)`
+
+Evaluates the \(k\)-th derivative of the successive vertex ordering polynomial at
+
+```
+x=-1.
+```
+
+This is used to compute the \(A_k\) coefficients.
+
+---
+
+## Computing the Successive Vertex Ordering Polynomial
+
+```python
+graph = rectangular_grid_adj_matrix(3,2).tolist()
+
+lattice = Lattice(Polyomino(graph))
+
+coefficients = lattice.get_polynomial_coefficients()
+
+print(coefficients)
+```
+
+---
+
+## Computing the \(A_k\) Coefficients
+
+```python
+coeffs = lattice.get_polynomial_coefficients()
+
+A_k = []
+
+for k in range(len(coeffs)):
+    value = kth_derivative_at_minus_one(coeffs, k)
+
+    A_k.append(value)
+
+print(A_k)
+```
+
+---
+
+## Included Examples
+
+The script includes examples demonstrating
+
+- the five-vertex graph from the paper;
+- a twenty-vertex graph;
+- a \(3\times2\) rectangular grid graph;
+- computation of successive vertex orderings;
+- computation of the successive vertex ordering polynomial;
+- computation of the \(A_k\) coefficients.
+
+---
 
 ## Assumptions
 
-The implementation assumes:
+The input graph should satisfy
 
-- the input is a **simple graph**;
-- the adjacency matrix is square, symmetric, and has zero diagonal;
-- the graph is connected.
+- the adjacency matrix is square;
+- entries are either 0 or 1;
+- the graph is simple (no self-loops);
+- the graph is undirected (symmetric adjacency matrix).
 
-These assumptions match the main theorem in the paper.
+The implementation is intended for connected graphs, consistent with the main theorem in the paper.
 
-## Relation to the paper
+---
 
-The code is a direct implementation of the proof strategy in the paper:
+## Complexity
 
-1. enumerate all independent sets;
-2. compute `a(I) = n - |N[I]|`;
-3. evaluate `b(I)` by the recursion;
-4. sum `(-1)^{|I|} a(I)/n * b(I)` over all independent sets;
-5. multiply by `n!`.
+The algorithm is exact.
 
-The classes in the code correspond to the notation in the paper as follows:
+Its running time is exponential in the worst case because it explicitly enumerates all independent sets of the graph. This matches the complexity discussed in the accompanying paper.
 
-- `Subset` represents a vertex subset `I`;
-- `Graph.neighborhood(I)` computes `N(I)`;
-- `Node.a` stores `a(I)`;
-- `Node.b` stores `b(I)`;
-- `Node.value` stores the signed contribution to `sigma(G)/n!`.
+---
 
-## Sanity check against the paper
+## Dependencies
 
-The included self-test uses the 5-vertex graph from Appendix A of the paper. The program returns `60`, which matches the worked example.
+The implementation requires
 
-## Limitations
+- Python 3.10+
+- NumPy
 
-The algorithm is exact but exponential in the worst case, because the number of independent sets can be exponential in the number of vertices. That is exactly the complexity profile discussed in the paper.
+Install NumPy using
+
+```bash
+pip install numpy
+```
+
+The Python standard library modules
+
+- `math`
+- `fractions`
+- `typing`
+
+are also used.
+
+---
+
+## Citation
+
+If you use this implementation in academic work, please cite
+
+> **Successive Vertex Orderings of Graphs**.
