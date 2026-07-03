@@ -237,6 +237,15 @@ class Lattice:
             total_sum += node.value
         return total_sum
 
+    def get_polynomial_coefficients(self, a_included = True) -> list[Fraction]:
+        coefficients = [Fraction(0) for i in range(self.n + 1)]
+        for node in self.nodes.values():
+            if a_included:
+                coefficients[node.d] += node.value * (-1)**node.d
+            else:
+                coefficients[node.d] += node.b
+        return coefficients   
+        
 #------------------------------------------------------------------------#
 def successive_vertex_orderings(adj_matrix):
     """
@@ -248,39 +257,3 @@ def successive_vertex_orderings(adj_matrix):
     fraction = lattice.sum_all_values()
 
     return int(fraction*math.factorial(polyomino.n))
-
-
-#-------------------------------------------------------------------------#
-#  cycle graph with additional chord (used in paper)
-adj_matrix = [
-    [0, 1, 0, 0, 1],  # Connections: 1-2, 1-5
-    [1, 0, 1, 1, 0],  # Connections: 2-1, 2-3, 2-4
-    [0, 1, 0, 1, 0],  # Connections: 3-2, 3-4
-    [0, 1, 1, 0, 1],  # Connections: 4-2, 4-3, 4-5
-    [1, 0, 0, 1, 0]   # Connections: 5-1, 5-4
-]
-print(successive_vertex_orderings(adj_matrix))
-
-#----------------------------------------------------------------------------#
-# Example graph: 20 vertices
-adj_matrix = [[0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 
-[1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-[0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-[1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-[0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
-[0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], 
-[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0], 
-[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1], 
-[1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]]
-print(successive_vertex_orderings(adj_matrix))
