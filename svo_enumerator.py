@@ -22,7 +22,6 @@ Version: 1.0
 #========================================== Main script ==========================================#
 # Import packages
 from __future__ import annotations
-from typing import Union, Iterable
 from fractions import Fraction
 import math
 import numpy as np
@@ -34,31 +33,37 @@ class Subset:
     def __init__(self, vector: list[int]):
         self.vector = vector
         for i in vector:
-            assert i == 0 or i == 1
+            if i not in (0, 1):
+                raise ValueError("indicator vector entries must be 0 or 1")
         self.n = len(vector)
-
-    def __len__(self):
-        return self.n
 
     def add_element(self, pos: int):
         """Add element to pos."""
-        assert 0 <= pos < self.n
+        if not 0 <= pos < self.n:
+            raise IndexError(f"vertex position {pos} out of range for subset of size {self.n}")
         self.vector[pos] = 1
 
     def remove_element(self, pos: int):
         """Remove element at pos."""
-        assert 0 <= pos < self.n
+        if not 0 <= pos < self.n:
+            raise IndexError(f"vertex position {pos} out of range for subset of size {self.n}")
         self.vector[pos] = 0
 
     def __add__(self, other: Subset) -> Subset:
         """Gives the union of two subsets."""
-        assert self.n == len(other)
+        if self.n != other.n:
+            raise ValueError(
+                f"cannot take union of subsets over ground sets of different sizes ({self.n} vs {other.n})"
+            )
         result_list = [self.vector[i] | other.vector[i] for i in range(self.n)]
         return Subset(result_list)
 
     def __mul__(self, other: Subset) -> Subset:
         """Gives the intersection of two subsets."""
-        assert self.n == len(other)
+        if self.n != other.n:
+            raise ValueError(
+                f"cannot intersect subsets over ground sets of different sizes ({self.n} vs {other.n})"
+            )
         result_list = [self.vector[i] & other.vector[i] for i in range(self.n)]
         return Subset(result_list)
 
@@ -90,7 +95,8 @@ class Subset:
         return self.vector[i]
 
     def __setitem__(self, i: int, x: int):
-        assert x == 0 or x == 1
+        if x not in (0, 1):
+            raise ValueError("indicator vector entries must be 0 or 1")
         self.vector[i] = x
 
     @property
@@ -128,16 +134,24 @@ class Subset:
 def make_empty_subset(n: int) -> Subset:
     return Subset([0 for i in range(n)])
 
-class Polyomino:
+class SimpleGraph:
     adj_matrix: list[list[int]]
     n: int
 
     def __init__(self, adj_matrix: list[list[int]]):
         self.n = len(adj_matrix)
         for i in range(self.n):
-            assert len(adj_matrix[i]) == self.n
+            if len(adj_matrix[i]) != self.n:
+                raise ValueError("adjacency matrix must be square")
+            if adj_matrix[i][i] != 0:
+                raise ValueError(f"self-loop at vertex {i}: the graph must be simple")
             for j in range(self.n):
-                assert adj_matrix[i][j] == 0 or adj_matrix[i][j] == 1
+                if adj_matrix[i][j] not in (0, 1):
+                    raise ValueError("adjacency matrix entries must be 0 or 1")
+                if adj_matrix[i][j] != adj_matrix[j][i]:
+                    raise ValueError(
+                        f"adjacency matrix must be symmetric: entries ({i},{j}) and ({j},{i}) differ"
+                    )
         self.adj_matrix = adj_matrix
 
     def neighborhood(self, subset: Subset) -> Subset:
@@ -159,7 +173,7 @@ class Polyomino:
 class Node:
     independent_set: Subset
     neighborhood: Subset
-    n: int # polyomino size
+    n: int # number of vertices of the graph
     a: int # |V| - |N(I) + I|
     b: Fraction | None # parameter to be computed
     d: int # subset size
@@ -168,18 +182,20 @@ class Node:
     is_root: bool
 
     def __init__(self, subset: Subset, neighborhood: Subset):
-        assert subset.n == neighborhood.n
-        assert abs(subset * neighborhood) == 0
+        # Internal invariants (deliberately asserts, not exceptions): Node is only
+        # constructed by Lattice, which guarantees both conditions.
+        assert subset.n == neighborhood.n  # ground sets agree by construction
+        assert abs(subset * neighborhood) == 0  # I and N(I) disjoint, i.e. I is independent
         self.independent_set = subset
         self.neighborhood = neighborhood
-        self.n = len(self.independent_set)
+        self.n = self.independent_set.n
         self.a = self.n - abs(neighborhood) - abs(self.independent_set)
         self.d = abs(self.independent_set)
         self.children = []
         self.parents = []
         if abs(self.independent_set) == 0:
             self.is_root = True
-            self.b = 1
+            self.b = Fraction(1)
         else:
             self.is_root = False
             self.b = None # to be calculated
@@ -192,7 +208,8 @@ class Node:
 
     @property
     def value(self) -> Fraction:
-        assert self.b is not None, "b not defined yet"
+        # Internal invariant: Lattice computes b level-by-level before value is read.
+        assert self.b is not None, "internal invariant: b must be computed before value is read"
         return Fraction(self.a) * Fraction(self.b) * Fraction(1, self.n) * (-1) ** self.d
 
     def calculate_b(self) -> Fraction:
@@ -202,26 +219,27 @@ class Node:
         return self.b
     
 class Lattice:
-    n: int # polyomino size
-    polyomino: Polyomino
+    n: int # number of vertices of the graph
+    graph: SimpleGraph
     root: Node
     levels: dict[int, list[Node]] # returns nodes with that many elements
     nodes: dict[int, Node] # key is hash value of independent set tuple
 
-    def __init__(self, polyomino: Polyomino):
-        self.n = polyomino.n
-        self.polyomino = polyomino
+    def __init__(self, graph: SimpleGraph):
+        self.n = graph.n
+        self.graph = graph
         self.root = Node(make_empty_subset(self.n), make_empty_subset(self.n))
         self.levels = {0: [self.root]}
         self.nodes = {make_empty_subset(self.n): self.root}
-        for d in range(1, self.n):
+        for d in range(1, self.n + 1):  # up to size n: for connected graphs alpha(G) <= n-1, but edgeless inputs have an independent set of size n
             self.levels[d] = []
             for node in self.levels[d - 1]:
                 next_subsets = node.independent_set.get_next_subsets()
                 for subset in next_subsets:
-                    if not self.polyomino ^ subset:
+                    if not self.graph ^ subset:
                         continue
-                    new_neighborhood = self.polyomino * node.independent_set + Subset(self.polyomino.adj_matrix[subset.largest_element])
+                    # N(I + {v}) = N(I) + N(v): reuse the parent's stored neighborhood instead of recomputing it
+                    new_neighborhood = node.neighborhood + Subset(self.graph.adj_matrix[subset.largest_element])
                     new_node = Node(subset, new_neighborhood)
                     self.levels[d].append(new_node)
                     self.nodes[new_node.independent_set] = new_node
@@ -254,11 +272,16 @@ def successive_vertex_orderings(adj_matrix):
     Given a graph (adjacency matrix), count the number of distinct growth sequences (successive vertex orderings).
     """
 
-    polyomino = Polyomino(adj_matrix)
-    lattice = Lattice(polyomino)
+    graph = SimpleGraph(adj_matrix)
+    lattice = Lattice(graph)
     fraction = lattice.sum_all_values()
 
-    return int(fraction*math.factorial(polyomino.n))
+    result = fraction * math.factorial(graph.n)
+    if result.denominator != 1:
+        raise ArithmeticError(
+            f"internal error: sigma(G) evaluated to the non-integer {result}"
+        )
+    return result.numerator
 
 #--------------------- Create adjacency matrix of an mxn puzzle ---------------------------#
 def rectangular_grid_adj_matrix(m, n):
@@ -287,68 +310,83 @@ def kth_derivative_at_minus_one(coeffs, k):
     return total
 
 
-#===========================================================================================#
-#----------------------------------------- EXAMPLES ----------------------------------------#
-#===========================================================================================#
+if __name__ == "__main__":
 
-#-------------------------------------------------------------------------#
-#  cycle graph with additional chord
-adj_matrix = [
-    [0, 1, 0, 0, 1],  # Connections: 1-2, 1-5
-    [1, 0, 1, 1, 0],  # Connections: 2-1, 2-3, 2-4
-    [0, 1, 0, 1, 0],  # Connections: 3-2, 3-4
-    [0, 1, 1, 0, 1],  # Connections: 4-2, 4-3, 4-5
-    [1, 0, 0, 1, 0]   # Connections: 5-1, 5-4
-]
-print(successive_vertex_orderings(adj_matrix))
+    #===========================================================================================#
+    #----------------------------------------- EXAMPLES ----------------------------------------#
+    #===========================================================================================#
 
-#----------------------------------------------------------------------------#
-# Example graph: 20 vertices
-adj_matrix = [
-  [0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 
-  [1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-  [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
-  [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0], 
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1], 
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
-]
-print(successive_vertex_orderings(adj_matrix))
+    #-------------------------------------------------------------------------#
+    #  cycle graph with additional chord
+    adj_matrix = [
+        [0, 1, 0, 0, 1],  # Connections: 1-2, 1-5
+        [1, 0, 1, 1, 0],  # Connections: 2-1, 2-3, 2-4
+        [0, 1, 0, 1, 0],  # Connections: 3-2, 3-4
+        [0, 1, 1, 0, 1],  # Connections: 4-2, 4-3, 4-5
+        [1, 0, 0, 1, 0]   # Connections: 5-1, 5-4
+    ]
+    print(successive_vertex_orderings(adj_matrix))
 
-#-----------------------------------------------------------------------------#
+    #----------------------------------------------------------------------------#
+    # Example graph: 20 vertices
+    adj_matrix = [
+      [0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], 
+      [1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+      [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
+      [0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0], 
+      [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1], 
+      [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    ]
+    print(successive_vertex_orderings(adj_matrix))
 
-#======================================= Jigsaw puzzle =====================================#
-rows = 3; cols = 2
-size = rows*cols # 3x2 puzzle
-graph = rectangular_grid_adj_matrix(rows,cols).tolist() # convert to adjacency matrix
+    #-----------------------------------------------------------------------------#
 
-# Return successive vertex orderings
-svo = Lattice(Polyomino(graph)).sum_all_values()
-print('SVO =', svo*math.factorial(size))
+    #======================================= Jigsaw puzzle =====================================#
+    rows = 3; cols = 2
+    size = rows*cols # 3x2 puzzle
+    adj_matrix = rectangular_grid_adj_matrix(rows,cols).tolist() # convert to adjacency matrix
 
-# Return successive vertex ordering polynomial
-polynomial_coeffs = Lattice(Polyomino(graph)).get_polynomial_coefficients(a_included = True)
-print(polynomial_coeffs)
+    # Build the independent-set lattice once; all queries below reuse it
+    lattice = Lattice(SimpleGraph(adj_matrix))
 
-# Get Ak coefficients by taking derivative of svo polynomial
-A_k_list = []
-for k in range(size + 1):
-    F_prime_k_at_minus_one = kth_derivative_at_minus_one(polynomial_coeffs, k)
-    n_fact = math.factorial(size)
-    k_fact = math.factorial(k)
-    A_k = (n_fact * F_prime_k_at_minus_one)/ k_fact
-    A_k_list.append(int(A_k))
-print(A_k_list)
+    # Return successive vertex orderings
+    svo = lattice.sum_all_values()
+    print('SVO =', svo*math.factorial(size))
+
+    # Return successive vertex ordering polynomial
+    polynomial_coeffs = lattice.get_polynomial_coefficients(a_included = True)
+    print(polynomial_coeffs)
+
+    # Get Ak coefficients by taking derivative of svo polynomial
+    A_k_list = []
+    for k in range(size + 1):
+        F_prime_k_at_minus_one = kth_derivative_at_minus_one(polynomial_coeffs, k)
+        A_k = Fraction(math.factorial(size)) * F_prime_k_at_minus_one / math.factorial(k)
+        if A_k.denominator != 1:
+            raise ArithmeticError(
+                f"internal error: A_{k} evaluated to the non-integer {A_k}"
+            )
+        A_k_list.append(A_k.numerator)
+    print(A_k_list)
+
+    # Consistency checks (Taylor expansion of the polynomial around x = -1):
+    #   A_0 = sigma(G)   and   sum_k A_k = n!
+    if A_k_list[0] != svo * math.factorial(size):
+        raise ArithmeticError("consistency check failed: A_0 != sigma(G)")
+    if sum(A_k_list) != math.factorial(size):
+        raise ArithmeticError("consistency check failed: sum of A_k != n!")
+    print("Consistency checks passed: A_0 = sigma(G) and sum(A_k) = n!")
