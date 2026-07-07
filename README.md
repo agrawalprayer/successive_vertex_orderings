@@ -83,9 +83,9 @@ Provides methods for
 
 ---
 
-### `Polyomino`
+### `SimpleGraph`
 
-Represents a graph using its adjacency matrix.
+Represents a finite simple undirected graph using its adjacency matrix.
 
 Provides methods for
 
@@ -93,7 +93,7 @@ Provides methods for
 - independent set testing,
 - graph operations used by the inclusion-exclusion algorithm.
 
-Although the class is named `Polyomino`, it accepts any graph represented by an adjacency matrix.
+The constructor validates its input and raises a `ValueError` if the matrix is not square, not symmetric, contains entries other than 0 and 1, or has a nonzero diagonal (self-loop).
 
 ---
 
@@ -172,6 +172,8 @@ Constructs the adjacency matrix of an \(m\times n\) rectangular grid using 4-nei
 Example
 
 ```python
+from svo_enumerator import rectangular_grid_adj_matrix
+
 graph = rectangular_grid_adj_matrix(3,2)
 ```
 
@@ -192,9 +194,11 @@ This is used to compute the \(A_k\) coefficients.
 ## Computing the Successive Vertex Ordering Polynomial
 
 ```python
-graph = rectangular_grid_adj_matrix(3,2).tolist()
+from svo_enumerator import SimpleGraph, Lattice, rectangular_grid_adj_matrix
 
-lattice = Lattice(Polyomino(graph))
+adj_matrix = rectangular_grid_adj_matrix(3,2).tolist()
+
+lattice = Lattice(SimpleGraph(adj_matrix))
 
 coefficients = lattice.get_polynomial_coefficients()
 
@@ -205,18 +209,32 @@ print(coefficients)
 
 ## Computing the \(A_k\) Coefficients
 
+The coefficient \(A_k\) counts the orderings in which exactly \(k\) non-first
+vertices appear before all of their neighbours, and is given by
+
+```
+A_k = (n!/k!) · P^(k)(-1)
+```
+
+where \(P\) is the successive vertex ordering polynomial.
+
 ```python
+import math
+from svo_enumerator import kth_derivative_at_minus_one
+
+# continuing from the previous example
 coeffs = lattice.get_polynomial_coefficients()
+n = len(coeffs) - 1
 
 A_k = []
-
 for k in range(len(coeffs)):
-    value = kth_derivative_at_minus_one(coeffs, k)
-
-    A_k.append(value)
+    value = math.factorial(n) * kth_derivative_at_minus_one(coeffs, k) / math.factorial(k)
+    A_k.append(int(value))
 
 print(A_k)
 ```
+
+In particular \(A_0 = σ(G)\), and the values satisfy \(Σ_k A_k = n!\).
 
 ---
 
@@ -235,12 +253,14 @@ The script includes examples demonstrating
 
 ## Assumptions
 
-The input graph should satisfy
+The input graph must satisfy
 
 - the adjacency matrix is square;
 - entries are either 0 or 1;
 - the graph is simple (no self-loops);
 - the graph is undirected (symmetric adjacency matrix).
+
+These conditions are checked by the `SimpleGraph` constructor, which raises a `ValueError` if any of them fails.
 
 The implementation is intended for connected graphs, consistent with the main theorem in the paper.
 
